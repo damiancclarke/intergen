@@ -53,6 +53,25 @@ global g2blnctrls edgmom EDAD_ABUELA marriedm doc_atenm bregion_??m byear_????m
 *--- Tables
 *-------------------------------------------------------------------------------
 
+*** Table A2: Temporal Links between Mother-Child Matched Birth Years ***
+use "$DAT/workingdata_age_work.dta", clear
+tab ANO_NAC_MADRE ANO_NAC
+
+*11 Corrections between 2001-2006 
+drop if ANO_NAC_MADRE==1999 & ANO_NAC==2001 & EDAD_MADRE==26 
+drop if ANO_NAC_MADRE==1999 & ANO_NAC==2002 & EDAD_MADRE==23 
+drop if ANO_NAC_MADRE==1999 & ANO_NAC==2002 & EDAD_MADRE==26
+drop if ANO_NAC_MADRE==1999 & ANO_NAC==2002 & EDAD_MADRE==27
+drop if ANO_NAC_MADRE==1994 & ANO_NAC==2003 & EDAD_MADRE==19 
+drop if ANO_NAC_MADRE==1997 & ANO_NAC==2003 & EDAD_MADRE==16 
+drop if ANO_NAC_MADRE==1994 & ANO_NAC==2004 & EDAD_MADRE==17 
+drop if ANO_NAC_MADRE==1999 & ANO_NAC==2004 & EDAD_MADRE==30 
+drop if ANO_NAC_MADRE==1996 & ANO_NAC==2005 & EDAD_MADRE==16 
+drop if ANO_NAC_MADRE==1995 & ANO_NAC==2006 & EDAD_MADRE==20 
+
+tab ANO_NAC_MADRE ANO_NAC 
+
+
 *** Table A3: Summary Statistics - Births local to the 1500 gram threshold ***
 use "$DAT/workingdata_age_work.dta", clear
 
@@ -79,7 +98,7 @@ keep if PESO>=1500-134.4
 #delimit ;
 estpost sum SEMANAS sem32 PESO vlbw TALLA dead_at_a00 days_y00 nadmssn_y00 EDAD_MADRE edmom;
 estout using "$TAB/SummaryB_G1.tex", replace label style(tex)
-cells("count mean(fmt(2)) sd(fmt(2)) min(fmt(2)) max(fmt(2))")
+cells("count(fmt(%15.0gc)) mean(fmt(2)) sd(fmt(2)) min(fmt(2)) max(fmt(2))")
 collabels(, none) mlabels(, none);
 #delimit cr
 restore
@@ -95,7 +114,7 @@ keep if PESO_MADRE>=1500-245.5
 #delimit ;
 estpost sum SEMANAS sem32 PESO vlbw TALLA dead_at_a00 EDAD_MADRE edmom;
 estout using "$TAB/SummaryB_G2.tex", replace label style(tex)
-cells("count mean(fmt(2)) sd(fmt(2)) min(fmt(2)) max(fmt(2))")
+cells("count(fmt(%15.0gc)) mean(fmt(2)) sd(fmt(2)) min(fmt(2)) max(fmt(2))")
 collabels(, none) mlabels(, none);
 #delimit cr
 restore
@@ -148,8 +167,8 @@ gen Conventional =.
 lab var Conventional "Conventional"
 #delimit ;
 esttab est1 est2 est3 est4 est5 est6 using "$TAB\tableIMR.tex",
-stats(dvmean N h_r effopt Nl Nr, fmt(%8.3f %9.0gc %5.1f %8.0gc %8.0gc %8.0gc)
-labels(" " "\\ Mean of Dep. Var." "Observations" "Optimal Bandwidth"
+stats(dvmean N h_r effopt Nl Nr, fmt(%8.3f %15.0gc %5.1f %8.0gc %8.0gc %8.0gc)
+labels("\\ Mean of Dep. Var." "Observations" "Optimal Bandwidth"
        "Effective Observations" "Observations (left)"
        "Observations (right)")) keep(Conventional Robust) label
 b(%-9.4f) se(%-9.4f) noobs nonotes nogaps mlabels(, none) nonumbers style(tex)
@@ -293,7 +312,80 @@ collabels(none) `sigstar';
 estimates clear
 
 
-*** Table B4: Identificacion Considerations – Donut RD and Placebo Treatments ***
+*** Table D1 and D2: Alternative Specifications ***
+use "$DAT/workingdata_age_work.dta", clear
+gen g2smpl = mrg_mbdata2main == 3 ///
+	& EDAD_MADRE >= 15 & EDAD_MADRE <= 45 & ANO_NAC >= 2007 & g2ok_blnctrls == 1
+
+keep if g2smpl == 1
+
+gen premature = SEMANAS<37
+gen fgrate = PESO/SEMANAS
+
+gen not_vlbw = 1 - vlbw
+gen not_dead_at_a00 = 1 - dead_at_a00
+gen not_gw_below_36 = 1 - gw_below_36
+gen control_group = PESO_MADRE >= 1500 if PESO_MADRE != .
+swindex PESO SEMANAS TALLA not_dead_at_a00 not_vlbw not_gw_below_36 fgrate, normby(control_group) gen(aindex)
+
+foreach outcome in SEMANAS PESO TALLA dead_at_a00 premature vlbw fgrate aindex {
+
+if ("`outcome'"=="SEMANAS")     local lab "gwks"
+if ("`outcome'"=="PESO")        local lab "peso"
+if ("`outcome'"=="TALLA")       local lab "talla"
+if ("`outcome'"=="dead_at_a00") local lab "deadata00"
+if ("`outcome'"=="premature")   local lab "prem36"
+if ("`outcome'"=="vlbw")        local lab "vlbw"
+if ("`outcome'"=="fgrate")      local lab "fgrate"
+if ("`outcome'"=="aindex")      local lab "aindex"
+
+local j = 1
+foreach p of numlist 1 2 {
+
+eststo: rdrobust `outcome' PESO_MADRE if sem32m == 1, c(1500) scalepar(-1) all ///
+          covs(${g2blnctrls} dbw1??0m) vce(cluster PESO_MADRE) p(`p') 
+estadd scalar esti = _b[Robust]
+local se = string(_se[Robust], "%05.3f")
+estadd local se "(`se')": est`j'
+local ++j
+
+eststo: rdrobust `outcome' PESO_MADRE if sem32m == 1, c(1500) scalepar(-1) all ///
+          covs(${g2blnctrls} dbw1??0m) vce(cluster PESO_MADRE) bwselect(cerrd) p(`p') 
+estadd scalar esti = _b[Robust]
+local se = string(_se[Robust], "%05.3f")
+estadd local se "(`se')": est`j'
+local ++j
+
+eststo: rdrobust `outcome' PESO_MADRE if sem32m == 1, c(1500) scalepar(-1) all ///
+          covs(${g2blnctrls} dbw1??0m) vce(cluster PESO_MADRE) p(`p') 
+estadd scalar esti = _b[Conventional]
+local se = string(_se[Robust], "%05.3f")
+estadd local se "(`se')": est`j'
+local ++j
+
+eststo: rdrobust `outcome' PESO_MADRE if sem32m == 1, c(1500) scalepar(-1) all ///
+          covs(${g2blnctrls} dbw1??0m) vce(cluster PESO_MADRE) p(`p')
+estadd scalar esti = _b[Bias-corrected]
+local se = string(_se[Robust], "%05.3f")
+estadd local se "(`se')": est`j'
+local ++j
+}
+
+* Panel A-H:		  
+#delimit ;
+esttab est1 est2 est3 est4 est5 est6 est7 est8 using "$TAB\_`lab'.tex",
+drop(Conventional Bias-corrected Robust) b(%-9.3f) se(%-9.3f)
+stats(esti se N h_r, fmt(%-9.3f %05.3f %9.0gc %5.1f) 
+labels("Birth weight $<$1500" " " "Observations" "Optimal Bandwidth") 
+star(esti)) noobs nonotes nogaps mlabels(, none) nonumbers style(tex) 
+fragment replace noline starlevel("*" 0.10 "**" 0.05 "***" 0.01);
+estimates clear;
+#delimit cr
+}
+estimates clear
+
+
+*** Table D3: Identificacion Considerations – Donut RD and Placebo Treatments ***
 
 * Panel A:
 use "$DAT/workingdata_age_work.dta", clear
@@ -414,80 +506,7 @@ foreach c in 1250 1750 2000 2250 2500 {
 estimates clear
 
 
-*** Table D1 and D2: Alternative Specifications ***
-use "$DAT/workingdata_age_work.dta", clear
-gen g2smpl = mrg_mbdata2main == 3 ///
-	& EDAD_MADRE >= 15 & EDAD_MADRE <= 45 & ANO_NAC >= 2007 & g2ok_blnctrls == 1
-
-keep if g2smpl == 1
-
-gen premature = SEMANAS<37
-gen fgrate = PESO/SEMANAS
-
-gen not_vlbw = 1 - vlbw
-gen not_dead_at_a00 = 1 - dead_at_a00
-gen not_gw_below_36 = 1 - gw_below_36
-gen control_group = PESO_MADRE >= 1500 if PESO_MADRE != .
-swindex PESO SEMANAS TALLA not_dead_at_a00 not_vlbw not_gw_below_36 fgrate, normby(control_group) gen(aindex)
-
-foreach outcome in SEMANAS PESO TALLA dead_at_a00 premature vlbw fgrate aindex {
-
-if ("`outcome'"=="SEMANAS")     local lab "gwks"
-if ("`outcome'"=="PESO")        local lab "peso"
-if ("`outcome'"=="TALLA")       local lab "talla"
-if ("`outcome'"=="dead_at_a00") local lab "deadata00"
-if ("`outcome'"=="premature")   local lab "prem36"
-if ("`outcome'"=="vlbw")        local lab "vlbw"
-if ("`outcome'"=="fgrate")      local lab "fgrate"
-if ("`outcome'"=="aindex")      local lab "aindex"
-
-local j = 1
-foreach p of numlist 1 2 {
-
-eststo: rdrobust `outcome' PESO_MADRE if sem32m == 1, c(1500) scalepar(-1) all ///
-          covs(${g2blnctrls} dbw1??0m) vce(cluster PESO_MADRE) p(`p') 
-estadd scalar esti = _b[Robust]
-local se = string(_se[Robust], "%05.3f")
-estadd local se "(`se')": est`j'
-local ++j
-
-eststo: rdrobust `outcome' PESO_MADRE if sem32m == 1, c(1500) scalepar(-1) all ///
-          covs(${g2blnctrls} dbw1??0m) vce(cluster PESO_MADRE) bwselect(cerrd) p(`p') 
-estadd scalar esti = _b[Robust]
-local se = string(_se[Robust], "%05.3f")
-estadd local se "(`se')": est`j'
-local ++j
-
-eststo: rdrobust `outcome' PESO_MADRE if sem32m == 1, c(1500) scalepar(-1) all ///
-          covs(${g2blnctrls} dbw1??0m) vce(cluster PESO_MADRE) p(`p') 
-estadd scalar esti = _b[Conventional]
-local se = string(_se[Robust], "%05.3f")
-estadd local se "(`se')": est`j'
-local ++j
-
-eststo: rdrobust `outcome' PESO_MADRE if sem32m == 1, c(1500) scalepar(-1) all ///
-          covs(${g2blnctrls} dbw1??0m) vce(cluster PESO_MADRE) p(`p')
-estadd scalar esti = _b[Bias-corrected]
-local se = string(_se[Robust], "%05.3f")
-estadd local se "(`se')": est`j'
-local ++j
-}
-
-* Panel A-H:		  
-#delimit ;
-esttab est1 est2 est3 est4 est5 est6 est7 est8 using "$TAB\_`lab'.tex",
-drop(Conventional Bias-corrected Robust) b(%-9.3f) se(%-9.3f)
-stats(esti se N h_r, fmt(%-9.3f %05.3f %9.0gc %5.1f) 
-labels("Birth weight $<$1500" " " "Observations" "Optimal Bandwidth") 
-star(esti)) noobs nonotes nogaps mlabels(, none) nonumbers style(tex) 
-fragment replace noline starlevel("*" 0.10 "**" 0.05 "***" 0.01);
-estimates clear;
-#delimit cr
-}
-estimates clear
-
-
-*** Table D3: Intensive Health Investments and Birth Outcomes of the Second Generation (All births) ***
+*** Table D4: Intensive Health Investments and Birth Outcomes of the Second Generation (All births) ***
 use "$DAT/workingdata_age_work.dta", clear
 gen g2smpl = mrg_mbdata2main == 3 ///
 	& EDAD_MADRE >= 15 & EDAD_MADRE <= 45 & ANO_NAC >= 2007 & g2ok_blnctrls == 1
@@ -593,7 +612,7 @@ fragment replace noline starlevel("*" 0.10 "**" 0.05 "***" 0.01);
 estimates clear
 
 
-*** Table D4: Effects Conditioning on Education and Partnership Choices ***
+*** Table D5: Effects Conditioning on Education and Partnership Choices ***
 
 * Panel A
 use "$DAT/workingdata_age_work.dta", clear
@@ -914,250 +933,7 @@ fragment replace noline starlevel("*" 0.10 "**" 0.05 "***" 0.01);
 estimates clear
 
 
-*** Table E1: Is there Policy-Driven Selection intro Childbirth? RD Estimates ***
-use "$DAT/workingdata_age_work.dta", clear
-
-keep if SEMANAS_MADRE>=32& SEMANAS_MADRE!=.
-
-gen marrieda = EST_CIV_MADRE==2 
-
-gen ageMum  = EDAD_MADRE
-gen educMum = CURSO_MADRE if NIVEL_MADRE==4 | NIVEL_MADRE==5 
-replace educMum = CURSO_MADRE+8 if NIVEL_MADRE==2 | NIVEL_MADRE==3
-replace educMum = CURSO_MADRE+12 if NIVEL_MADRE==1
-gen employedMum = activ_m==1
-
-gen ageDad  = EDAD_PADRE
-gen educDad = CURSO_PADRE if NIVEL_PADRE==4 | NIVEL_PADRE==5 
-replace educDad = CURSO_PADRE+8 if NIVEL_PADRE==2 | NIVEL_PADRE==3
-replace educDad = CURSO_PADRE+12 if NIVEL_PADRE==1
-gen employedDad = activ_p==1
-
-gen urbano= URBANO_RURAL==1
-
-gen difedad = abs(ageDad-ageMum)
-
-gen obs_dad = (EDAD_PADRE!=.)
-
-local i=1
-foreach var of varlist ageMum educMum employedMum ageDad educDad employedDad marrieda difedad obs_dad urbano {
- keep if SEMANAS_MADRE>=32& SEMANAS_MADRE!=.
-	
- eststo: rdrobust `var' PESO_MADRE, c(1500) scalepar(-1) covs(${g2blnctrls} dbw1??0m) vce(cluster PESO_MADRE) all 
- 
- if ("`var'"=="ageMum") 	 local pv = normal(_b[Robust]/_se[Robust])
- if ("`var'"=="educMum")     local pv = 1-normal(_b[Robust]/_se[Robust])
- if ("`var'"=="employedMum") local pv = 1-normal(_b[Robust]/_se[Robust])
- if ("`var'"=="ageDad")      local pv = normal(_b[Robust]/_se[Robust])
- if ("`var'"=="educDad")     local pv = 1-normal(_b[Robust]/_se[Robust])
- if ("`var'"=="employedDad") local pv = 1-normal(_b[Robust]/_se[Robust])
- if ("`var'"=="marrieda")    local pv = 1-normal(_b[Robust]/_se[Robust])
- if ("`var'"=="difedad")     local pv = normal(_b[Robust]/_se[Robust])
- if ("`var'"=="obs_dad")     local pv = 1-normal(_b[Robust]/_se[Robust])
- if ("`var'"=="urbano")      local pv = 1-normal(_b[Robust]/_se[Robust])
- 
- local p_value = string(`pv', "%05.3f")
- estadd local p_value "[`p_value']": est`i'
- 
- estadd scalar Nl   = e(N_h_l)
- estadd scalar Nr   = e(N_h_r)
- local ef = e(N_h_l)+e(N_h_r)
- estadd scalar effopt = `ef'
- local BW = e(h_l)
- local maxwt = 1500+`BW'
- local minwt = 1500-`BW'
- sum `var' if PESO_MADRE >=`minwt' & PESO_MADRE<=`maxwt'
- estadd scalar dvmean = r(mean)
-	
- estimates save "$OUT/g2_`var'_blnctrls_o32_hps.ster", replace
- local ++i
-}
-
-clear 
-local end _blnctrls
-gen Robust =.
-lab var Robust "Birth weight $<$ 1,500"
-gen po32 = .
-set obs 10
-local i = 1
-foreach outcome in ageMum educMum employedMum ageDad educDad employedDad marrieda difedad obs_dad urbano { 
- estimates use "$OUT/g2_`outcome'`end'_o32_hps.ster"
- eststo est`i'
- replace po32=e(pv_rb) in `i'
- local ++i
-}
-rename po32 pval
-qsharpenedp pval
-
-local l = 1
-foreach outcome in ageMum educMum employedMum ageDad educDad employedDad marrieda difedad obs_dad urbano {
-    sum bky06 in `l'
-    estadd scalar qpv = r(mean): est`l'
-    local ++l
-}
-
-local ests est1 est2 est3 est4 est5 est6 est7 est8 est9 est10
-#delimit ;
-esttab `ests' using "$TAB/fig7_o32_hps.tex",
-replace booktabs cells(b(fmt(%-9.3f) star) se(fmt(%-9.3f) par(( )))) label
-stats(p_value dvmean N h_r effopt Nl Nr qpv, 
-      fmt(%05.3f %05.3f %12.0gc %5.1f %9.0gc %9.0gc %9.0gc %05.3f) 
-      label(" " "\\ Mean of Dep. Var." "Observations" "Optimal Bandwidth" 
-            "Effective Observations" "Observations (left)" "Observations (right)" 
-			"q-sharpened p-value"))
-nonotes nogaps mlabels(, none) nonumbers style(tex) fragment noline keep(Robust) varlabels(Robust "Birth weight $<$ 1,500")
-collabels(none) starlevel("*" 0.1 "**" 0.05 "***" 0.01);
-#delimit cr
-estimates clear
-
-
-*** Table E2: Impacts of Early Life Health Interventions on Number of Children ***
-use "$DAT/workingdata_age_work.dta", clear
-
-gen g1smpl = SEXO == 2 ///
-  & EDAD_MADRE >= 15 & EDAD_MADRE <= 45 ///
-  & mrg_mbdata2NAC == 1 ///
-  & g1ok_blnctrls == 1
-	
-keep if g1smpl == 1
-
-local list nbirths_at_15 nbirths_at_16 nbirths_at_17 nbirths_at_18 nbirths_at_19 /// 
-           nbirths_at_20 nbirths_at_21 nbirths_at_22 nbirths_at_23 nbirths_at_24 ///
-		   nbirths_at_25 nbirths_at_26 
-								  
-egen nbirths_all=rowtotal(`list'), missing					  
- 
-keep if sem32 == 1
- 
-rdbwselect nbirths_all PESO, c(1500) ///
-           covs(${g1blnctrls} dbw1??0) vce(cluster PESO)
-		   
-scalar RBW_o32 = e(h_mserd)
-scalar LBW_o32 = e(h_mserd)
-scalar maxwt_o32 = 1500 + RBW_o32
-scalar minwt_o32 = 1500 - LBW_o32
-gen g1_nbirths_all = PESO >= minwt_o32 & PESO <= maxwt_o32
- 
-rdrobust nbirths_all PESO, c(1500) ///
-scalepar(-1) all covs(${g1blnctrls} dbw1??0) vce(cluster PESO)
-eststo all_all
-     
-estadd scalar Hopt = e(h_l)
-estadd scalar Nl   = e(N_h_l)
-estadd scalar Nr   = e(N_h_r)
-local ef = e(N_h_l) + e(N_h_r)
-estadd scalar effopt = `ef'
-estadd scalar Ntot = e(N)
-
-sum nbirths_all if sem32 == 1 & g1_nbirths_all == 1 & nbirths_all !=. & PESO !=.
-estadd scalar dvmean = r(mean)   // All
-sum nbirths_all if sem32 == 1 & PESO >= minwt_o32 & PESO < 1500 & nbirths_all !=. & PESO !=.
-estadd scalar dvmean_l = r(mean) // Left
-sum nbirths_all if sem32 == 1 & PESO >= 1500 & PESO <= maxwt_o32 & nbirths_all !=. & PESO !=.
-estadd scalar dvmean_r = r(mean) // Right
- 
-gen Robust = .
-lab var Robust "Birth weight $<$ 1,500"
- 
-#delimit ;
-esttab all_all using "$TAB\TA18_o32.tex",
-stats(Ntot dvmean h_r effopt dvmean_l Nl dvmean_r Nr,
-fmt( %15.0gc %8.3f %5.1f %8.0gc %8.3f %8.0gc %8.3f %8.0gc)
-labels("\midrule Observations" "Mean of Dep.\ Var." "Optimal Bandwidth"
-       "Effective Observations" "\midrule Mean of Dep.\ Var. (left)" 
-	   "Observations (left)" "\midrule Mean of Dep.\ Var. (right)"
-       "Observations (right)")) keep(Robust) label
-b(%-9.3f) se(%-9.3f) noobs nonotes nogaps mlabels(, none) nonumbers style(tex)
-fragment replace noline starlevel("*" 0.10 "**" 0.05 "***" 0.01);
-#delimit cr
-estimates clear
-
-
-*** Table E3: Mother’s Age Baseline Test by Parents’ Characteristics – Generation 2 ***
-use "$DAT/workingdata_age_work.dta", clear
-
-* G2: Bandwidth 245.5 Anderson index
-gen	g2smpl = (mrg_mbdata2main==3 & EDAD_MADRE>=15 & EDAD_MADRE<=45 & ANO_NAC>=2007)
-keep if g2smpl==1
-
-keep if sem32m==1
-
-keep if PESO_MADRE<=1500+245.5
-keep if PESO_MADRE>=1500-245.5
-
-* Groups
-* Mother's Education: Above vs. Below Median (12 years)
-sum edmom, d
-local median=r(p50)
-gen aoa_mother=.
-replace aoa_mother=0 if  edmom <  `median'
-replace aoa_mother=1 if  edmom >= `median'
-* Grandmother's Education: Above vs. Below Median (9 years)
-sum edgmom, d
-local median=r(p50)
-gen aoa_grandmother=.
-replace aoa_grandmother=0 if  edgmom <  `median'
-replace aoa_grandmother=1 if  edgmom >= `median'
-* Parent's Age Difference: 0-5 Years vs. +6 Years
-gen ageMum  = EDAD_MADRE
-gen ageDad  = EDAD_PADRE
-gen difedad = abs(ageDad-ageMum) // absolute gap
-gen difedad_plus6 = .
-replace difedad_plus6 = 0 if difedad<=5 // 0-5 
-replace difedad_plus6 = 1 if difedad>5  // 6+
-* Observed Father
-gen obs_dad = (EDAD_PADRE!=.)
-
-
-keep EDAD_MADRE vlbwm aoa_mother aoa_grandmother difedad_plus6 obs_dad
-
-foreach y of numlist 15/26 {
-
- gen age`y' = (EDAD_MADRE==`y')
- eststo: reg age`y' vlbwm, level(99)
-
- foreach var of varlist aoa_mother aoa_grandmother difedad_plus6 obs_dad {
- 
-  foreach n of numlist 0 1 {
-  
-   eststo: reg age`y' vlbwm if `var'==`n', level(99)
-   
-  }
- }
-}
-
-* Estimates
-foreach j of numlist 1/12 {
- foreach num of numlist 1/9 {
-  local n=`num'+`j'*9-9
-  local ests`j' `ests`j'' est`n'
- }
- local ++j
-}
-
-foreach n of numlist 1/11 {
- local age=14+`n'
- #delimit ;
- esttab `ests`n''
- using "$TAB\TA20_y`age'_o32.tex", 
- keep(vlbwm) coeflabels(vlbwm "Mother's age: `age'") 
- b(%-9.3f) se(%-9.3f) noobs nonotes nogaps mlabels(, none) nonumbers style(tex)
- fragment replace noline starlevel("*" 0.10 "**" 0.05 "***" 0.01);
- #delimit cr
-}
-
-#delimit ;
-esttab `ests12'
-using "$TAB\TA20_y26_o32.tex", 
-keep(vlbwm) coeflabels(vlbwm "Mother's age: `age'") 
-stats(N,fmt(%9.0gc) labels("\\ Observations")) 
-b(%-9.3f) se(%-9.3f) noobs nonotes nogaps mlabels(, none) nonumbers style(tex)
-fragment replace noline starlevel("*" 0.10 "**" 0.05 "***" 0.01);
-#delimit cr
-estimates clear
-
-
-*** Table E4: Selective survival and second generation outcomes - counterfactual analysis ***
+*** Table E1: Selective survival and second generation outcomes - counterfactual analysis ***
 do "$DO/SelectionReplication.do" // Create data
 
 * Panel A-G:
@@ -1272,6 +1048,249 @@ foreach var in gwks peso talla deadata00 prem36 vlbw fgrate {
 }
 estimates clear
 
+
+*** Table E2: Impacts of Early Life Health Interventions on Number of Children ***
+use "$DAT/workingdata_age_work.dta", clear
+
+gen g1smpl = SEXO == 2 ///
+  & EDAD_MADRE >= 15 & EDAD_MADRE <= 45 ///
+  & mrg_mbdata2NAC == 1 ///
+  & g1ok_blnctrls == 1
+	
+keep if g1smpl == 1
+
+local list nbirths_at_15 nbirths_at_16 nbirths_at_17 nbirths_at_18 nbirths_at_19 /// 
+           nbirths_at_20 nbirths_at_21 nbirths_at_22 nbirths_at_23 nbirths_at_24 ///
+		   nbirths_at_25 nbirths_at_26 
+								  
+egen nbirths_all=rowtotal(`list'), missing					  
+ 
+keep if sem32 == 1
+ 
+rdbwselect nbirths_all PESO, c(1500) ///
+           covs(${g1blnctrls} dbw1??0) vce(cluster PESO)
+		   
+scalar RBW_o32 = e(h_mserd)
+scalar LBW_o32 = e(h_mserd)
+scalar maxwt_o32 = 1500 + RBW_o32
+scalar minwt_o32 = 1500 - LBW_o32
+gen g1_nbirths_all = PESO >= minwt_o32 & PESO <= maxwt_o32
+ 
+rdrobust nbirths_all PESO, c(1500) ///
+scalepar(-1) all covs(${g1blnctrls} dbw1??0) vce(cluster PESO)
+eststo all_all
+     
+estadd scalar Hopt = e(h_l)
+estadd scalar Nl   = e(N_h_l)
+estadd scalar Nr   = e(N_h_r)
+local ef = e(N_h_l) + e(N_h_r)
+estadd scalar effopt = `ef'
+estadd scalar Ntot = e(N)
+
+sum nbirths_all if sem32 == 1 & g1_nbirths_all == 1 & nbirths_all !=. & PESO !=.
+estadd scalar dvmean = r(mean)   // All
+sum nbirths_all if sem32 == 1 & PESO >= minwt_o32 & PESO < 1500 & nbirths_all !=. & PESO !=.
+estadd scalar dvmean_l = r(mean) // Left
+sum nbirths_all if sem32 == 1 & PESO >= 1500 & PESO <= maxwt_o32 & nbirths_all !=. & PESO !=.
+estadd scalar dvmean_r = r(mean) // Right
+ 
+gen Robust = .
+lab var Robust "Birth weight $<$ 1,500"
+ 
+#delimit ;
+esttab all_all using "$TAB\TA18_o32.tex",
+stats(Ntot dvmean h_r effopt dvmean_l Nl dvmean_r Nr,
+fmt( %15.0gc %8.3f %5.1f %8.0gc %8.3f %8.0gc %8.3f %8.0gc)
+labels("\midrule Observations" "Mean of Dep.\ Var." "Optimal Bandwidth"
+       "Effective Observations" "\midrule Mean of Dep.\ Var. (left)" 
+	   "Observations (left)" "\midrule Mean of Dep.\ Var. (right)"
+       "Observations (right)")) keep(Robust) label
+b(%-9.3f) se(%-9.3f) noobs nonotes nogaps mlabels(, none) nonumbers style(tex)
+fragment replace noline starlevel("*" 0.10 "**" 0.05 "***" 0.01);
+#delimit cr
+estimates clear
+
+
+*** Table E3: Is there Policy-Driven Selection intro Childbirth? RD Estimates ***
+use "$DAT/workingdata_age_work.dta", clear
+
+keep if SEMANAS_MADRE>=32& SEMANAS_MADRE!=.
+
+gen marrieda = EST_CIV_MADRE==2 
+
+gen ageMum  = EDAD_MADRE
+gen educMum = CURSO_MADRE if NIVEL_MADRE==4 | NIVEL_MADRE==5 
+replace educMum = CURSO_MADRE+8 if NIVEL_MADRE==2 | NIVEL_MADRE==3
+replace educMum = CURSO_MADRE+12 if NIVEL_MADRE==1
+gen employedMum = activ_m==1
+
+gen ageDad  = EDAD_PADRE
+gen educDad = CURSO_PADRE if NIVEL_PADRE==4 | NIVEL_PADRE==5 
+replace educDad = CURSO_PADRE+8 if NIVEL_PADRE==2 | NIVEL_PADRE==3
+replace educDad = CURSO_PADRE+12 if NIVEL_PADRE==1
+gen employedDad = activ_p==1
+
+gen urbano= URBANO_RURAL==1
+
+gen difedad = abs(ageDad-ageMum)
+
+gen obs_dad = (EDAD_PADRE!=.)
+
+local i=1
+foreach var of varlist ageMum educMum employedMum ageDad educDad employedDad marrieda difedad obs_dad urbano {
+ keep if SEMANAS_MADRE>=32& SEMANAS_MADRE!=.
+	
+ eststo: rdrobust `var' PESO_MADRE, c(1500) scalepar(-1) covs(${g2blnctrls} dbw1??0m) vce(cluster PESO_MADRE) all 
+ 
+ if ("`var'"=="ageMum") 	 local pv = normal(_b[Robust]/_se[Robust])
+ if ("`var'"=="educMum")     local pv = 1-normal(_b[Robust]/_se[Robust])
+ if ("`var'"=="employedMum") local pv = 1-normal(_b[Robust]/_se[Robust])
+ if ("`var'"=="ageDad")      local pv = normal(_b[Robust]/_se[Robust])
+ if ("`var'"=="educDad")     local pv = 1-normal(_b[Robust]/_se[Robust])
+ if ("`var'"=="employedDad") local pv = 1-normal(_b[Robust]/_se[Robust])
+ if ("`var'"=="marrieda")    local pv = 1-normal(_b[Robust]/_se[Robust])
+ if ("`var'"=="difedad")     local pv = normal(_b[Robust]/_se[Robust])
+ if ("`var'"=="obs_dad")     local pv = 1-normal(_b[Robust]/_se[Robust])
+ if ("`var'"=="urbano")      local pv = 1-normal(_b[Robust]/_se[Robust])
+ 
+ local p_value = string(`pv', "%05.3f")
+ estadd local p_value "[`p_value']": est`i'
+ 
+ estadd scalar Nl   = e(N_h_l)
+ estadd scalar Nr   = e(N_h_r)
+ local ef = e(N_h_l)+e(N_h_r)
+ estadd scalar effopt = `ef'
+ local BW = e(h_l)
+ local maxwt = 1500+`BW'
+ local minwt = 1500-`BW'
+ sum `var' if PESO_MADRE >=`minwt' & PESO_MADRE<=`maxwt'
+ estadd scalar dvmean = r(mean)
+	
+ estimates save "$OUT/g2_`var'_blnctrls_o32_hps.ster", replace
+ local ++i
+}
+
+clear 
+local end _blnctrls
+gen Robust =.
+lab var Robust "Birth weight $<$ 1,500"
+gen po32 = .
+set obs 10
+local i = 1
+foreach outcome in ageMum educMum employedMum ageDad educDad employedDad marrieda difedad obs_dad urbano { 
+ estimates use "$OUT/g2_`outcome'`end'_o32_hps.ster"
+ eststo est`i'
+ replace po32=e(pv_rb) in `i'
+ local ++i
+}
+rename po32 pval
+qsharpenedp pval
+
+local l = 1
+foreach outcome in ageMum educMum employedMum ageDad educDad employedDad marrieda difedad obs_dad urbano {
+    sum bky06 in `l'
+    estadd scalar qpv = r(mean): est`l'
+    local ++l
+}
+
+local ests est1 est2 est3 est4 est5 est6 est7 est8 est9 est10
+#delimit ;
+esttab `ests' using "$TAB/fig7_o32_hps.tex",
+replace booktabs cells(b(fmt(%-9.3f) star) se(fmt(%-9.3f) par(( )))) label
+stats(p_value dvmean N h_r effopt Nl Nr qpv, 
+      fmt(%05.3f %05.3f %12.0gc %5.1f %9.0gc %9.0gc %9.0gc %05.3f) 
+      label(" " "\\ Mean of Dep. Var." "Observations" "Optimal Bandwidth" 
+            "Effective Observations" "Observations (left)" "Observations (right)" 
+			"q-sharpened p-value"))
+nonotes nogaps mlabels(, none) nonumbers style(tex) fragment noline keep(Robust) varlabels(Robust "Birth weight $<$ 1,500")
+collabels(none) starlevel("*" 0.1 "**" 0.05 "***" 0.01);
+#delimit cr
+estimates clear
+
+
+*** Table E4: Mother’s Age Baseline Test by Parents’ Characteristics – Generation 2 ***
+use "$DAT/workingdata_age_work.dta", clear
+
+* G2: Bandwidth 245.5 Anderson index
+gen	g2smpl = (mrg_mbdata2main==3 & EDAD_MADRE>=15 & EDAD_MADRE<=45 & ANO_NAC>=2007)
+keep if g2smpl==1
+
+keep if sem32m==1
+
+keep if PESO_MADRE<=1500+245.5
+keep if PESO_MADRE>=1500-245.5
+
+* Groups
+* Mother's Education: Above vs. Below Median (12 years)
+sum edmom, d
+local median=r(p50)
+gen aoa_mother=.
+replace aoa_mother=0 if  edmom <  `median'
+replace aoa_mother=1 if  edmom >= `median'
+* Grandmother's Education: Above vs. Below Median (9 years)
+sum edgmom, d
+local median=r(p50)
+gen aoa_grandmother=.
+replace aoa_grandmother=0 if  edgmom <  `median'
+replace aoa_grandmother=1 if  edgmom >= `median'
+* Parent's Age Difference: 0-5 Years vs. +6 Years
+gen ageMum  = EDAD_MADRE
+gen ageDad  = EDAD_PADRE
+gen difedad = abs(ageDad-ageMum) // absolute gap
+gen difedad_plus6 = .
+replace difedad_plus6 = 0 if difedad<=5 // 0-5 
+replace difedad_plus6 = 1 if difedad>5  // 6+
+* Observed Father
+gen obs_dad = (EDAD_PADRE!=.)
+
+
+keep EDAD_MADRE vlbwm aoa_mother aoa_grandmother difedad_plus6 obs_dad
+
+foreach y of numlist 15/26 {
+
+ gen age`y' = (EDAD_MADRE==`y')
+ eststo: reg age`y' vlbwm, level(99)
+
+ foreach var of varlist aoa_mother aoa_grandmother difedad_plus6 obs_dad {
+ 
+  foreach n of numlist 0 1 {
+  
+   eststo: reg age`y' vlbwm if `var'==`n', level(99)
+   
+  }
+ }
+}
+
+* Estimates
+foreach j of numlist 1/12 {
+ foreach num of numlist 1/9 {
+  local n=`num'+`j'*9-9
+  local ests`j' `ests`j'' est`n'
+ }
+ local ++j
+}
+
+foreach n of numlist 1/11 {
+ local age=14+`n'
+ #delimit ;
+ esttab `ests`n''
+ using "$TAB\TA20_y`age'_o32.tex", 
+ keep(vlbwm) coeflabels(vlbwm "Mother's age: `age'") 
+ b(%-9.3f) se(%-9.3f) noobs nonotes nogaps mlabels(, none) nonumbers style(tex)
+ fragment replace noline starlevel("*" 0.10 "**" 0.05 "***" 0.01);
+ #delimit cr
+}
+
+#delimit ;
+esttab `ests12'
+using "$TAB\TA20_y26_o32.tex", 
+keep(vlbwm) coeflabels(vlbwm "Mother's age: `age'") 
+stats(N,fmt(%9.0gc) labels("\\ Observations")) 
+b(%-9.3f) se(%-9.3f) noobs nonotes nogaps mlabels(, none) nonumbers style(tex)
+fragment replace noline starlevel("*" 0.10 "**" 0.05 "***" 0.01);
+#delimit cr
+estimates clear
+
 *-------------------------------------------------------------------------------
 *--- Figures
 *-------------------------------------------------------------------------------
@@ -1363,7 +1382,43 @@ graph export "$FIG/birthSpacingClose.eps", replace
 estimates clear
 
 
-*** Figure B1: Birth weight Assignment Thresholds and Infant Mortality ***
+*** Figure B1: Power Analysis - RD Models of Intergenerational Impacts ***
+use "$DAT/workingdata_age_work.dta", clear
+gen g2smpl = mrg_mbdata2main == 3 ///
+	& EDAD_MADRE >= 15 & EDAD_MADRE <= 45 & ANO_NAC >= 2007 & g2ok_blnctrls == 1
+
+keep if g2smpl == 1
+
+*Graph range 
+local range_PESO    "-300 300"
+local range_TALLA   "-1.5 1.5"
+local range_SEMANAS "-1.5 1.5"
+*Graph step 
+local step_PESO    100
+local step_TALLA   0.5
+local step_SEMANAS 0.5
+
+foreach var in SEMANAS PESO TALLA {
+ 
+ #delimit ;
+ rdpow `var' PESO_MADRE if sem32m==1, c(1500) scalepar(-1) all plot
+	   graph_range(`range_`var'') graph_step(`step_`var'') covs(${g2blnctrls})
+	   graph_options(scheme(lean2) ytitle("Power") xtitle("Tau")
+	   legend(rows(1) position(6)) xline(0, lcolor(red) lpattern(shortdash))); 
+ graph export "$FIG/NAC_`var'_o32_Power.eps", replace;
+		
+ rdpow `var' PESO_MADRE if sem32m==1, c(1500) scalepar(-1) all plot
+	   graph_range(`range_`var'') graph_step(`step_`var'') covs(${g2blnctrls} dbw1??0m)
+	   graph_options(scheme(lean2) ytitle("Power") xtitle("Tau")
+	   legend(rows(1) position(6)) xline(0, lcolor(red) lpattern(shortdash)));
+ graph export "$FIG/NAC_`var'_o32_heaping_Power.eps", replace;
+ #delimit cr
+		
+}
+estimates clear
+
+
+*** Figure B2: Birth weight Assignment Thresholds and Infant Mortality ***
 
 * Panel A: 
 use "$DAT/workingdata_age_work.dta", clear
@@ -1490,7 +1545,7 @@ foreach year of numlist 2018 2001 {
 estimates clear
 
 
-*** Figure B2: Birth Weight Assignment Thresholds and Infant Mortality (Early Years Only) ***
+*** Figure B3: Birth Weight Assignment Thresholds and Infant Mortality (Early Years Only) ***
 use "$DAT/workingdata_age_work.dta", clear
 
 keep if SEMANAS>=32& SEMANAS!=.
@@ -1530,7 +1585,86 @@ preserve
 estimates clear
 
 
-*** Figure B3: Balance Tests - Generation 1 family and Birth Characteristics ***
+*** Figure B4: Discontinuities in Hospitalization in Babies Born at <32 Gestational Weeks ***
+use "$DAT/workingdata_age_work.dta", clear
+
+gen g1smpl = EDAD_MADRE >= 15 & EDAD_MADRE <= 45 ///
+	& mrg_mbdata2NAC == 1 ///
+	& g1ok_blnctrls == 1
+
+keep if g1smpl == 1
+
+sum ANO_NAC
+scalar max_ano_nac = r(max)
+scalar min_ano_nac = r(min)
+scalar max_age = max_ano_nac - min_ano_nac
+
+drop days_y25 days_y26 days_y27
+
+foreach var of varlist days_y?? {
+
+ dis "`var'"
+ 
+ local aa = substr("`var'", -2, 2)
+ local a = real("`aa'")
+	
+ gen days0_y`aa' = `var'
+ replace days0_y`aa' = 0 if days_y`aa' == . & nadmssn_y`aa' != . & ndischrg_y`aa' != .
+ label var days0_y`aa' "Number of days in hospital at age `a' (inputing 0 for no hospitalization)"
+	
+  if `a' >= 0 & `a' <= `=max_age'  {
+   #delimit ;
+   cap rdrobust days0_y`aa' PESO if sem32 == 0, c(1500) scalepar(-1) all
+           covs(${g1blnctrls} dbw1??0) vce(cluster PESO);
+   #delimit cr
+		
+	
+   cap estimates save "$OUT/g1_hdays0at`aa'_u32_hps.ster", replace	
+	}
+}
+
+clear 
+set more off
+set obs 25
+gen age  = _n-1
+gen EST  = .
+gen LB   = .
+gen UB   = .
+gen LB90 = .
+gen UB90 = .
+estimates clear
+foreach age of numlist 0(1)9 {
+ estimates use "$OUT/g1_hdays0at0`age'_u32_hps.ster"
+ eststo hosp
+   qui: replace EST = _b[Robust] if age==`age'
+   qui: replace LB  = _b[Robust] + invnormal(0.025)*_se[Robust] if  age==`age'
+   qui: replace UB  = _b[Robust] + invnormal(0.975)*_se[Robust] if  age==`age'
+   qui: replace LB90  = _b[Robust] + invnormal(0.05)*_se[Robust] if age==`age'
+   qui: replace UB90  = _b[Robust] + invnormal(0.95)*_se[Robust] if age==`age'
+}
+foreach age of numlist 10(1)24 {
+ estimates use "$OUT/g1_hdays0at`age'_u32_hps.ster"
+ eststo hosp
+   qui: replace EST = _b[Robust] if age==`age'
+   qui: replace LB  = _b[Robust] + invnormal(0.025)*_se[Robust] if  age==`age'
+   qui: replace UB  = _b[Robust] + invnormal(0.975)*_se[Robust] if  age==`age'
+   qui: replace LB90  = _b[Robust] + invnormal(0.05)*_se[Robust] if age==`age'
+   qui: replace UB90  = _b[Robust] + invnormal(0.95)*_se[Robust] if age==`age'
+}
+graph set window fontface "Times New Roman"
+set scheme plotplainblind
+#delimit ;
+twoway rcap LB90 UB90 age, ylabel(,format("%3.0f")) lwidth(thick)
+    || rcap LB UB age, ylabel(,format("%3.0f")) lcolor(black)
+    || scatter EST age, mc(black) ms(S) ysize(6) xsize(6.5)
+yline(0, lpattern(dash)) xtitle("Exposed Child's Age") legend(off)
+xlabel(0(2)24) ytitle("Days of hospitalization");
+#delimit cr
+graph export "$FIG/hospitalization_u32.eps", replace
+estimates clear
+
+
+*** Figure B5: Balance Tests - Generation 1 family and Birth Characteristics ***
 use "$DAT/workingdata_age_work.dta", clear
 
 keep if EDAD_MADRE >= 15 & EDAD_MADRE <= 45 
@@ -1628,105 +1762,6 @@ foreach var of varlist ageMum educMum employedMum ageDad educDad employedDad mar
 estimates clear
 
 
-*** Figure B4: Discontinuities in Hospitalization in Babies Born at <32 Gestational Weeks ***
-use "$DAT/workingdata_age_work.dta", clear
-
-gen g1smpl = EDAD_MADRE >= 15 & EDAD_MADRE <= 45 ///
-	& mrg_mbdata2NAC == 1 ///
-	& g1ok_blnctrls == 1
-
-keep if g1smpl == 1
-
-sum ANO_NAC
-scalar max_ano_nac = r(max)
-scalar min_ano_nac = r(min)
-scalar max_age = max_ano_nac - min_ano_nac
-
-drop days_y25 days_y26 days_y27
-
-foreach var of varlist days_y?? {
-
- dis "`var'"
- 
- local aa = substr("`var'", -2, 2)
- local a = real("`aa'")
-	
- gen days0_y`aa' = `var'
- replace days0_y`aa' = 0 if days_y`aa' == . & nadmssn_y`aa' != . & ndischrg_y`aa' != .
- label var days0_y`aa' "Number of days in hospital at age `a' (inputing 0 for no hospitalization)"
-	
-  if `a' >= 0 & `a' <= `=max_age'  {
-   #delimit ;
-   cap rdrobust days0_y`aa' PESO if sem32 == 0, c(1500) scalepar(-1) all
-           covs(${g1blnctrls} dbw1??0) vce(cluster PESO);
-   #delimit cr
-		
-	
-   cap estimates save "$OUT/g1_hdays0at`aa'_u32_hps.ster", replace	
-	}
-}
-
-clear 
-set more off
-set obs 25
-gen age  = _n-1
-gen EST  = .
-gen LB   = .
-gen UB   = .
-gen LB90 = .
-gen UB90 = .
-estimates clear
-foreach age of numlist 0(1)9 {
- estimates use "$OUT/g1_hdays0at0`age'_u32_hps.ster"
- eststo hosp
-   qui: replace EST = _b[Robust] if age==`age'
-   qui: replace LB  = _b[Robust] + invnormal(0.025)*_se[Robust] if  age==`age'
-   qui: replace UB  = _b[Robust] + invnormal(0.975)*_se[Robust] if  age==`age'
-   qui: replace LB90  = _b[Robust] + invnormal(0.05)*_se[Robust] if age==`age'
-   qui: replace UB90  = _b[Robust] + invnormal(0.95)*_se[Robust] if age==`age'
-}
-foreach age of numlist 10(1)24 {
- estimates use "$OUT/g1_hdays0at`age'_u32_hps.ster"
- eststo hosp
-   qui: replace EST = _b[Robust] if age==`age'
-   qui: replace LB  = _b[Robust] + invnormal(0.025)*_se[Robust] if  age==`age'
-   qui: replace UB  = _b[Robust] + invnormal(0.975)*_se[Robust] if  age==`age'
-   qui: replace LB90  = _b[Robust] + invnormal(0.05)*_se[Robust] if age==`age'
-   qui: replace UB90  = _b[Robust] + invnormal(0.95)*_se[Robust] if age==`age'
-}
-graph set window fontface "Times New Roman"
-set scheme plotplainblind
-#delimit ;
-twoway rcap LB90 UB90 age, ylabel(,format("%3.0f")) lwidth(thick)
-    || rcap LB UB age, ylabel(,format("%3.0f")) lcolor(black)
-    || scatter EST age, mc(black) ms(S) ysize(6) xsize(6.5)
-yline(0, lpattern(dash)) xtitle("Exposed Child's Age") legend(off)
-xlabel(0(2)24) ytitle("Days of hospitalization");
-#delimit cr
-graph export "$FIG/hospitalization_u32.eps", replace
-estimates clear
-
-
-*** Figure B5: Birth Weight Frequency in Adminstrative Records ***
-use "$DAT/workingdata_age_work.dta", clear
-keep if  ANO_NAC < 2007
-graph set window fontface "Times New Roman"
-set scheme plotplainblind
-
-* Panel A:
-histogram PESO, xtitle("Birth weights (grams)") fcolor(gray) ylabel(0(.0002).001)
-graph export "$FIG/histFull2007.eps", replace
-
-* Panel B:
-preserve
-drop if PESO<1300
-drop if PESO>1700
-histogram PESO, width(10) xtitle("Birth weights (grams)") fcolor(gray)
-graph export "$FIG/histShort2007.eps", replace
-restore
-estimates clear
-
-
 *** Figure B6: Observable Birth Outcomes by Birth Weight
 use "$DAT/workingdata_age_work.dta", clear
 
@@ -1757,39 +1792,23 @@ graph export "$FIG/gestByWeight.eps", replace;
 estimates clear
 
 
-*** Figure B7: Power Analysis - RD Models of Intergenerational Impacts ***
+*** Figure B7: Birth Weight Frequency in Adminstrative Records ***
 use "$DAT/workingdata_age_work.dta", clear
-gen g2smpl = mrg_mbdata2main == 3 ///
-	& EDAD_MADRE >= 15 & EDAD_MADRE <= 45 & ANO_NAC >= 2007 & g2ok_blnctrls == 1
+keep if  ANO_NAC < 2007
+graph set window fontface "Times New Roman"
+set scheme plotplainblind
 
-keep if g2smpl == 1
+* Panel A:
+histogram PESO, xtitle("Birth weights (grams)") fcolor(gray) ylabel(0(.0002).001)
+graph export "$FIG/histFull2007.eps", replace
 
-*Graph range 
-local range_PESO    "-300 300"
-local range_TALLA   "-1.5 1.5"
-local range_SEMANAS "-1.5 1.5"
-*Graph step 
-local step_PESO    100
-local step_TALLA   0.5
-local step_SEMANAS 0.5
-
-foreach var in SEMANAS PESO TALLA {
- 
- #delimit ;
- rdpow `var' PESO_MADRE if sem32m==1, c(1500) scalepar(-1) all plot
-	   graph_range(`range_`var'') graph_step(`step_`var'') covs(${g2blnctrls})
-	   graph_options(scheme(lean2) ytitle("Power") xtitle("Tau")
-	   legend(rows(1) position(6)) xline(0, lcolor(red) lpattern(shortdash))); 
- graph export "$FIG/NAC_`var'_o32_Power.eps", replace;
-		
- rdpow `var' PESO_MADRE if sem32m==1, c(1500) scalepar(-1) all plot
-	   graph_range(`range_`var'') graph_step(`step_`var'') covs(${g2blnctrls} dbw1??0m)
-	   graph_options(scheme(lean2) ytitle("Power") xtitle("Tau")
-	   legend(rows(1) position(6)) xline(0, lcolor(red) lpattern(shortdash)));
- graph export "$FIG/NAC_`var'_o32_heaping_Power.eps", replace;
- #delimit cr
-		
-}
+* Panel B:
+preserve
+drop if PESO<1300
+drop if PESO>1700
+histogram PESO, width(10) xtitle("Birth weights (grams)") fcolor(gray)
+graph export "$FIG/histShort2007.eps", replace
+restore
 estimates clear
 
 
@@ -2401,6 +2420,170 @@ foreach yvar of varlist PESO SEMANAS {
  drop group EST LB UB
 }
 estimates clear
+
+
+*** Figure E1: Intergenerational Transmission Under Alternative Health and Fertility Counterfactuals ***
+do "$DO/SelectionReplication.do" // Create data
+
+* Panel A-D:
+use "$DAT/workingdata_age_work.dta", clear
+
+gen g2smpl = mrg_mbdata2NAC == 3 ///
+	& EDAD_MADRE >= 15 & EDAD_MADRE <= 45 & ANO_NAC >= 2007 & g2ok_blnctrls == 1
+	
+keep if g2smpl == 1
+
+gen fgrate = PESO/SEMANAS
+
+append using "$DAT\Selection\counterfactual_babies_o32_hps.dta", gen(app_cbs)
+
+cap mkdir "$OUT\selection"
+
+foreach var in PESO SEMANAS TALLA fgrate {
+ rename `var'_p5 `var'_p05
+}
+
+foreach var in PESO SEMANAS TALLA fgrate {
+ if "`var'"=="PESO" local lab "peso"
+ if "`var'"=="SEMANAS" local lab "gwks"
+ if "`var'"=="TALLA" local lab "talla"
+ if "`var'"=="fgrate" local lab "fgrate"
+ 
+ foreach pp of numlist 5(5)95  {
+  if `pp'==5 local ft 05
+  else       local ft=`pp'
+  
+ gen `var'_i`ft' = `var' if app_cbs == 0
+ replace `var'_i`ft' = `var'_p`ft' if app_cbs == 1 & SEMANAS_MADRE >= 32 & PESO_MADRE >= 1500
+    
+ rdrobust `var'_i`ft' PESO_MADRE if sem32m == 1, c(1500) scalepar(-1) all ///
+           covs(${g2blnctrls} dbw1??0m) vce(cluster PESO_MADRE)
+ estimates store select`ft'_`lab'o32
+
+ estimates save "$OUT/Selection/g2_ip`ft'`lab'_o32_hps.ster", replace
+ }
+ 
+}
+
+use "$DAT/workingdata_age_work.dta", clear
+
+gen g2smpl = mrg_mbdata2NAC == 3 ///
+	& EDAD_MADRE >= 15 & EDAD_MADRE <= 45 ///
+	& ANO_NAC >= 2007 ///
+	& g2ok_blnctrls == 1
+
+keep if g2smpl == 1
+
+gen fgrate = PESO/SEMANAS
+
+foreach s of numlist 1 2 3 5 12 4 6 7 8 9 10 {
+
+ cap mkdir "$OUT\selection`s'"
+
+ preserve
+ cap append using "$DAT\Selection\counterfactual_babies_o32_fixed`s'.dta", gen(app_cbs)	
+ 
+ foreach var in PESO SEMANAS TALLA fgrate {
+ rename `var'_p5 `var'_p05
+ }
+ 
+ foreach var in  PESO SEMANAS TALLA fgrate {
+ if "`var'"=="PESO" local lab "peso"
+ if "`var'"=="SEMANAS" local lab "gwks"
+ if "`var'"=="TALLA" local lab "talla"
+ if "`var'"=="fgrate" local lab "fgrate"
+ 
+ foreach pp of numlist 5(5)95  {
+  if `pp'==5 local ft 05
+  else       local ft=`pp'
+  
+  gen `var'_i`ft' = `var' if app_cbs == 0
+  replace `var'_i`ft' = `var'_p`ft' if app_cbs == 1 & SEMANAS_MADRE >= 32 & PESO_MADRE >= 1500
+    
+  rdrobust `var'_i`ft' PESO_MADRE if sem32m == 1, c(1500) scalepar(-1) all ///
+            covs(${g2blnctrls} dbw1??0m) vce(cluster PESO_MADRE)
+  estimates store select`ft'_`lab'o32
+
+  estimates save "$OUT/selection`s'/g2_ip`ft'`lab'_o32_hps.ster", replace
+ }
+}
+ restore
+}
+
+foreach var in peso gwks talla fgrate {
+
+ local lring 0
+ local ys
+ 
+ local clabel fmt(%-9.4f)
+ if `"`var'"'=="peso" {
+  local top = 155
+  local textloc 77.5
+  local lpos 6
+  local clabel fmt(%-9.2f)
+ }
+ if `"`var'"'=="gwks" {
+  local top = 0.63
+  local textloc 0.315
+  local lpos 7
+  local ys ylabel(-1(0.5)0.5, format(%04.2f))
+ }
+ if `"`var'"'=="talla" {
+  local top = 0.74
+  local textloc 0.37
+  local lpos 7
+ }
+ if `"`var'"'=="fgrate" {
+  local top = 4
+  local textloc 2
+  local lpos 7
+ }
+ 
+ clear   
+ set obs 19
+ gen n = _n*5
+ gen `var' = .
+ 
+ foreach num of numlist 5(5)95 {
+   if `num'==5 local ft 05
+   else        local ft=`num'
+   cap estimates use "$OUT/Selection/g2_ip`ft'`var'_o32_hps.ster"
+   if _rc==0 replace `var' = _b[Robust] if n==`num'
+ }
+ 
+ gen high = `top'
+ gen low  = 0
+ gen n2 = (_n-1)*105.5/19
+
+ foreach s of numlist 1 2 3 5 12 4 6 7 8 9 10 {
+  gen `var'`s' = .
+  foreach num of numlist 5(5)95 {
+   if `num'==5 local ft 05
+   else        local ft=`num'
+   cap estimates use "$OUT/selection`s'/g2_ip`ft'`var'_o32_hps.ster"
+   if _rc==0 replace `var'`s' = _b[Robust] if n==`num'
+  }
+ }
+ set scheme white_jet
+ #delimit ;
+ twoway rarea high low n2, color(gs14)
+ ||     connected `var'   n, ms(sh)
+ ||     connected `var'12 n, ms(oh)
+ ||     connected `var'4  n, ms(dh)
+ ||     connected `var'6  n, ms(th)
+ ||     connected `var'8  n, ms(x)
+ ||     connected `var'10 n, ms(d)
+ ||     connected `var'1  n, ms(s)
+ ||     connected `var'2  n, ms(o)
+ ytitle("Estimated Intergenerational Returns")
+ xtitle("Imputed Centile: Health")
+ text(`textloc' 50 "Positive Intergenerational Transmission") yline(0)
+ legend(order(2 "E[fertility | BW]" 3 "0" 4 "0.2"
+              5 "0.4" 6 "0.6" 7 "0.8" 8 "1" 9 "2")
+ ring(`lring') pos(`lpos') rows(2)) `ys';
+ graph export "$FIG/`var'100.eps", replace;
+ #delimit cr
+}
 
 
 *** Figure E2: Weight at Birth by Mothers's Age ***
@@ -3232,170 +3415,6 @@ xlabel(15(5)45) ylabel(, format(%04.2f));
 graph export "$FIG/prematureAge_agediff_FE.pdf", replace;
 #delimit cr
 estimates clear
-
-
-*** Figure E6: Intergenerational Transmission Under Alternative Health and Fertility Counterfactuals ***
-do "$DO/SelectionReplication.do" // Create data
-
-* Panel A-D:
-use "$DAT/workingdata_age_work.dta", clear
-
-gen g2smpl = mrg_mbdata2NAC == 3 ///
-	& EDAD_MADRE >= 15 & EDAD_MADRE <= 45 & ANO_NAC >= 2007 & g2ok_blnctrls == 1
-	
-keep if g2smpl == 1
-
-gen fgrate = PESO/SEMANAS
-
-append using "$DAT\Selection\counterfactual_babies_o32_hps.dta", gen(app_cbs)
-
-cap mkdir "$OUT\selection"
-
-foreach var in PESO SEMANAS TALLA fgrate {
- rename `var'_p5 `var'_p05
-}
-
-foreach var in PESO SEMANAS TALLA fgrate {
- if "`var'"=="PESO" local lab "peso"
- if "`var'"=="SEMANAS" local lab "gwks"
- if "`var'"=="TALLA" local lab "talla"
- if "`var'"=="fgrate" local lab "fgrate"
- 
- foreach pp of numlist 5(5)95  {
-  if `pp'==5 local ft 05
-  else       local ft=`pp'
-  
- gen `var'_i`ft' = `var' if app_cbs == 0
- replace `var'_i`ft' = `var'_p`ft' if app_cbs == 1 & SEMANAS_MADRE >= 32 & PESO_MADRE >= 1500
-    
- rdrobust `var'_i`ft' PESO_MADRE if sem32m == 1, c(1500) scalepar(-1) all ///
-           covs(${g2blnctrls} dbw1??0m) vce(cluster PESO_MADRE)
- estimates store select`ft'_`lab'o32
-
- estimates save "$OUT/Selection/g2_ip`ft'`lab'_o32_hps.ster", replace
- }
- 
-}
-
-use "$DAT/workingdata_age_work.dta", clear
-
-gen g2smpl = mrg_mbdata2NAC == 3 ///
-	& EDAD_MADRE >= 15 & EDAD_MADRE <= 45 ///
-	& ANO_NAC >= 2007 ///
-	& g2ok_blnctrls == 1
-
-keep if g2smpl == 1
-
-gen fgrate = PESO/SEMANAS
-
-foreach s of numlist 1 2 3 5 12 4 6 7 8 9 10 {
-
- cap mkdir "$OUT\selection`s'"
-
- preserve
- cap append using "$DAT\Selection\counterfactual_babies_o32_fixed`s'.dta", gen(app_cbs)	
- 
- foreach var in PESO SEMANAS TALLA fgrate {
- rename `var'_p5 `var'_p05
- }
- 
- foreach var in  PESO SEMANAS TALLA fgrate {
- if "`var'"=="PESO" local lab "peso"
- if "`var'"=="SEMANAS" local lab "gwks"
- if "`var'"=="TALLA" local lab "talla"
- if "`var'"=="fgrate" local lab "fgrate"
- 
- foreach pp of numlist 5(5)95  {
-  if `pp'==5 local ft 05
-  else       local ft=`pp'
-  
-  gen `var'_i`ft' = `var' if app_cbs == 0
-  replace `var'_i`ft' = `var'_p`ft' if app_cbs == 1 & SEMANAS_MADRE >= 32 & PESO_MADRE >= 1500
-    
-  rdrobust `var'_i`ft' PESO_MADRE if sem32m == 1, c(1500) scalepar(-1) all ///
-            covs(${g2blnctrls} dbw1??0m) vce(cluster PESO_MADRE)
-  estimates store select`ft'_`lab'o32
-
-  estimates save "$OUT/selection`s'/g2_ip`ft'`lab'_o32_hps.ster", replace
- }
-}
- restore
-}
-
-foreach var in peso gwks talla fgrate {
-
- local lring 0
- local ys
- 
- local clabel fmt(%-9.4f)
- if `"`var'"'=="peso" {
-  local top = 155
-  local textloc 77.5
-  local lpos 6
-  local clabel fmt(%-9.2f)
- }
- if `"`var'"'=="gwks" {
-  local top = 0.63
-  local textloc 0.315
-  local lpos 7
-  local ys ylabel(-1(0.5)0.5, format(%04.2f))
- }
- if `"`var'"'=="talla" {
-  local top = 0.74
-  local textloc 0.37
-  local lpos 7
- }
- if `"`var'"'=="fgrate" {
-  local top = 4
-  local textloc 2
-  local lpos 7
- }
- 
- clear   
- set obs 19
- gen n = _n*5
- gen `var' = .
- 
- foreach num of numlist 5(5)95 {
-   if `num'==5 local ft 05
-   else        local ft=`num'
-   cap estimates use "$OUT/Selection/g2_ip`ft'`var'_o32_hps.ster"
-   if _rc==0 replace `var' = _b[Robust] if n==`num'
- }
- 
- gen high = `top'
- gen low  = 0
- gen n2 = (_n-1)*105.5/19
-
- foreach s of numlist 1 2 3 5 12 4 6 7 8 9 10 {
-  gen `var'`s' = .
-  foreach num of numlist 5(5)95 {
-   if `num'==5 local ft 05
-   else        local ft=`num'
-   cap estimates use "$OUT/selection`s'/g2_ip`ft'`var'_o32_hps.ster"
-   if _rc==0 replace `var'`s' = _b[Robust] if n==`num'
-  }
- }
- set scheme white_jet
- #delimit ;
- twoway rarea high low n2, color(gs14)
- ||     connected `var'   n, ms(sh)
- ||     connected `var'12 n, ms(oh)
- ||     connected `var'4  n, ms(dh)
- ||     connected `var'6  n, ms(th)
- ||     connected `var'8  n, ms(x)
- ||     connected `var'10 n, ms(d)
- ||     connected `var'1  n, ms(s)
- ||     connected `var'2  n, ms(o)
- ytitle("Estimated Intergenerational Returns")
- xtitle("Imputed Centile: Health")
- text(`textloc' 50 "Positive Intergenerational Transmission") yline(0)
- legend(order(2 "E[fertility | BW]" 3 "0" 4 "0.2"
-              5 "0.4" 6 "0.6" 7 "0.8" 8 "1" 9 "2")
- ring(`lring') pos(`lpos') rows(2)) `ys';
- graph export "$FIG/`var'100.eps", replace;
- #delimit cr
-}
 
 *-------------------------------------------------------------------------------
 *--- Log Close

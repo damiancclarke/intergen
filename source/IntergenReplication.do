@@ -460,7 +460,7 @@ b(%-9.3f) se(%-9.3f) noobs nonotes nogaps mlabels(, none) nonumbers style(tex)
 fragment replace noline starlevel("*" 0.10 "**" 0.05 "***" 0.01);
 #delimit cr
 estimates clear
-kñkñk
+
 
 *** Table 4: The Effect of Compositional Change on Health at Birth ***
 use "$DAT/workingdata_age_work.dta", clear
